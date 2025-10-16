@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -34,7 +33,6 @@ def make_demo_data(seed: int = 7, n_stores: int = 120, days: int = 180):
 
     rows = []
     for _, s in stores.iterrows():
-        # base performance by franchise
         base = {
             "Frisch's Big Boy": 280.0,
             "Nathan's Famous": 60.0,
@@ -44,15 +42,12 @@ def make_demo_data(seed: int = 7, n_stores: int = 120, days: int = 180):
         }[s.franchise]
         vol = base * (1 + rng.normal(0, 0.15))
         for d in date_index:
-            dow = d.dayofweek # 0=Mon
-            # day-of-week effect
-            vol_dow = vol * (1.00 + [ -0.05, -0.02, 0.00, 0.06, 0.12, 0.10, 0.08 ][dow])
-            # monthly effect
+            dow = d.dayofweek
+            vol_dow = vol * (1.00 + [-0.05, -0.02, 0.00, 0.06, 0.12, 0.10, 0.08][dow])
             vol_month = vol_dow * (1 + 0.15*np.sin((d.dayofyear/365)*2*np.pi))
-            # noise
             x = max(0, vol_month + rng.normal(0, vol*0.25))
             orders = max(0, int(rng.normal(200 if vol>200 else 110, 25)))
-            aov = np.clip(rng.normal( (x / max(1,orders))*1.05, 2.0), 6, 25)
+            aov = np.clip(rng.normal((x / max(1,orders))*1.05, 2.0), 6, 25)
             refunds = np.clip(int(rng.normal(orders * (0.05 if s.franchise!="Nathan's Famous" else 0.15), 3)), 0, orders)
             refund_amt = np.clip(refunds * rng.normal(6.0, 1.25), 0, None)
             platform = np.random.choice(platforms, p=[0.55, 0.30, 0.15])
@@ -64,15 +59,12 @@ def make_demo_data(seed: int = 7, n_stores: int = 120, days: int = 180):
     facts = pd.DataFrame(rows)
     facts["refund_rate"] = (facts["refunds"] / facts["orders"]).replace([np.inf, np.nan], 0.0)
 
-    # Ratings (simulate significant skew to 1-star)
     rating_rows = []
     for _, s in stores.iterrows():
         n = int(np.clip(abs(rng.normal(320, 120)), 40, 1200))
-        # 1-star heavy
         weights = np.array([0.80, 0.02, 0.03, 0.04, 0.11])
         stars = rng.choice([1,2,3,4,5], size=n, p=weights/weights.sum())
         mean = stars.mean()
-        # Bayesian shrinkage toward global 2.2★ with min 20 reviews
         global_mean = 2.2
         prior_n = 20
         adj = (stars.sum() + prior_n*global_mean) / (n + prior_n)
@@ -82,6 +74,7 @@ def make_demo_data(seed: int = 7, n_stores: int = 120, days: int = 180):
         })
     ratings = pd.DataFrame(rating_rows)
     return facts, ratings, stores
+
 
 def maybe_use_uploaded_data():
     st.sidebar.markdown("### Upload your CSVs (optional)")
@@ -101,6 +94,7 @@ def maybe_use_uploaded_data():
     ratings = pd.read_csv(ratings_csv) if ratings_csv is not None else None
     return facts, ratings
 
+
 # ------------------------------
 # Data
 # ------------------------------
@@ -110,6 +104,7 @@ facts = facts_up if facts_up is not None else facts_demo
 ratings = ratings_up if ratings_up is not None else ratings_demo
 
 min_date, max_date = facts["date"].min(), facts["date"].max()
+
 
 # ------------------------------
 # Sidebar filters
@@ -132,6 +127,7 @@ if franchise_sel != "All":
 if store_sel:
     f = f[f["store_name"].isin(store_sel)]
 
+
 # ------------------------------
 # KPIs
 # ------------------------------
@@ -145,6 +141,7 @@ kpi_card("Refund Rate", f"{100*f['refunds'].sum()/max(1,f['orders'].sum()):.1f}%
 kpi_card("Avg Rating (adj)", f"{ratings['adj_star'].mean():.2f}★", help_text="Bayesian adjusted star rating")
 
 st.markdown("---")
+
 
 # ------------------------------
 # Tabs
@@ -167,7 +164,6 @@ with tab_overview:
                      labels={"total_revenue":"Total Revenue ($)","store_name":""})
         st.plotly_chart(fig, use_container_width=True)
     with c2:
-        # color by refund rate severity
         ref = f.groupby(["store_id","store_name"]).agg(
             total_rev=("total_revenue","sum"),
             refund_rate=("refunds",lambda x: x.sum()/max(1, f.loc[x.index,"orders"].sum()))
@@ -190,7 +186,6 @@ with tab_overview:
 # -------------- Revenue
 with tab_rev:
     st.subheader("Revenue by Day / Month / Quarter")
-    # Day of week
     df_dow = f.copy()
     df_dow["dow"] = df_dow["date"].dt.day_name()
     rev_dow = df_dow.groupby("dow")["total_revenue"].sum().reindex(
@@ -234,7 +229,6 @@ with tab_rev:
 with tab_model:
     st.caption("Demo section: import your own model outputs to replace these visuals.")
     st.subheader("Top Revenue Drivers (Feature Importance)")
-    # Demo importances
     imp = pd.DataFrame({
         "feature":["avg_order_value","avg_subtotal","order_count","doordash_orders","num_stores","rain_days","marketing_spend","north_region","promos","avg_prep_time"],
         "importance":[0.47,0.29,0.09,0.06,0.05,0.02,0.01,0.005,0.003,0.002]
@@ -244,7 +238,6 @@ with tab_model:
     st.plotly_chart(fig_imp, use_container_width=True)
 
     st.subheader("Model Prediction Accuracy")
-    # Simulate actual vs predicted
     days = pd.date_range(f["date"].min(), f["date"].max(), freq="D")
     actual = f.groupby("date")["total_revenue"].sum().reindex(days).fillna(method="ffill")
     noise_linear = np.random.normal(0, 16.87, size=len(days))
@@ -297,7 +290,6 @@ with tab_cx:
 # -------------- Actionable Insights
 with tab_actions:
     st.subheader("Highlights & Alerts")
-    # Simple rules for demo
     overall_refund_rate = f["refunds"].sum() / max(1, f["orders"].sum())
     high_refund_franchises = (f.groupby("franchise")
                                 .apply(lambda d: d["refunds"].sum()/max(1,d["orders"].sum()))
@@ -305,9 +297,10 @@ with tab_actions:
     st.write(f"**Portfolio refund rate:** {overall_refund_rate:.1%}")
     worst = high_refund_franchises.index[0]
     st.write(f"**Highest refund rate franchise:** {worst} — {high_refund_franchises.iloc[0]:.1%}")
-    st.markdown(\"\"\"
+    st.markdown("""
 - Focus on stores with **high refunds and high orders** (bottom-left of bubble chart).
 - Check **bag-check discipline**, **pickup lanes**, and **peak staffing** where adjusted stars are lowest.
 - Use **AOV** and **subtotal** levers (top features) to drive revenue; volume alone is not sufficient.
-- Random Forest shows **stable, low-error predictions** — better for near‑term forecasting.
-    \"\"\")
+- Random Forest shows **stable, low-error predictions** — better for near-term forecasting.
+    """)
+
